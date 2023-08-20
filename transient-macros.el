@@ -14,12 +14,12 @@
   " Reusable simple quit for transients "
   )
 
-(defclass jg-transient--group (transient-prefix)
+(defclass transient-macro--group (transient-prefix)
   ((description :initarg :description :initform nil))
   "Prefix Subclassed to hold a description"
   )
 
-(cl-defmethod transient-format-description :before ((obj jg-transient--group))
+(cl-defmethod transient-format-description :before ((obj transient-macro--group))
   "Format the description by calling the next method.  If the result
 is nil, then use \"(BUG: no description)\" as the description.
 If the OBJ's `key' is currently unreachable, then apply the face
@@ -55,17 +55,17 @@ If the OBJ's `key' is currently unreachable, then apply the face
   )
 
 ;;;###autoload
-(defmacro transient-make-toggle! (mode &optional key desc heading)
+(defmacro transient-make-mode-toggle! (mode &optional desc key heading mode-var)
   " Macro to define a transient suffix for toggling a mode easier "
-  (let* ((fullname (intern (format "jg-transient-toggle-%s" (symbol-name mode))))
+  (let* ((fullname (intern (format "transient-macro-toggle-%s" (symbol-name mode))))
          (name (let ((str (or desc (symbol-name mode))))
                  (when heading
                    (put-text-property 0 (length str) 'face 'transient-heading str))
                  str))
-        (desc-fn `(lambda () (format "%-2s : %s" (fmt-as-bool! ,mode) ,name)))
+        (desc-fn `(lambda () (format "%-2s : %s" (fmt-as-bool! ,(or mode-var mode)) ,name)))
         )
     `(progn
-       (defvar ,mode nil)
+       (defvar ,(or mode-var mode) nil)
        (transient-define-suffix ,fullname ()
                :transient t
                ,@(when key (list :key key))
@@ -73,25 +73,52 @@ If the OBJ's `key' is currently unreachable, then apply the face
                (interactive)
                (,mode 'toggle)
                )
+       (quote ,fullname)
        )
      )
   )
 
 ;;;###autoload
-(cl-defmacro transient-make-call! (name fmt &body body)
+(defmacro transient-make-var-toggle! (name var &optional desc key)
+  " Macro to define a transient suffix for toggling a bool variable "
+  (let* ((fullname (intern (format "transient-macro-toggle-%s" (symbol-name name))))
+         (desc-fn `(lambda () (format "%-2s : %s" (fmt-as-bool! ,var) ,(or desc (symbol-name name)))))
+         )
+    `(progn
+       (defvar ,var nil)
+       (transient-define-suffix ,fullname ()
+         :transient t
+         :description ,desc-fn
+         ,@(when key (list :key key))
+         (interactive)
+         (setq ,var (not ,var))
+         )
+       (quote ,fullname)
+       )
+    )
+  )
+
+;;;###autoload
+(cl-defmacro transient-make-call! (name key fmt &body body)
   " create a transient suffix of `name`
 with a string or format call, which executes the body
  "
-  (let ((fullname (intern (format "jg-transient-call-%s" (if (stringp name) name
+  (let ((fullname (intern (format "transient-macro-call-%s" (if (stringp name) name
                                                            (symbol-name name)))))
         )
-    `(transient-define-suffix ,fullname ()
+    `(progn
+       (transient-define-suffix ,fullname ()
          :transient t
+         ,@(when key (list :key key))
          :description (lambda () ,fmt)
          (interactive)
-         ,@body
+         (with-current-buffer transient--original-buffer
+           ,@body
+           )
          )
-     )
+       (quote ,fullname)
+       )
+    )
   )
 
 ;;;###autoload
@@ -107,14 +134,16 @@ which can then be included in other transient-prefixes as just `name`'
     (when (keywordp (car body))
       (pop body) (pop body)
       )
-    `(progn (transient-define-prefix ,prefix ()
-              ,docstring
-              ,@body
-              transient-quit!
-              )
-            (defun ,docfn nil ,doc)
-            (defconst ,name (list ,bind  (quote ,docfn) (quote ,prefix)))
-            )
+    `(progn
+       (transient-define-prefix ,prefix ()
+         ,docstring
+         ,@body
+         transient-quit!
+         )
+       (defun ,docfn nil ,doc)
+       (defconst ,name (list ,bind  (quote ,docfn) (quote ,prefix)))
+       (quote ,name)
+       )
     )
   )
 
