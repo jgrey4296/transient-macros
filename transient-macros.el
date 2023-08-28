@@ -105,14 +105,18 @@ with a string or format call, which executes the body
  "
   (let ((fullname (intern (format "transient-macro-call-%s" (if (stringp name) name
                                                            (symbol-name name)))))
+        (transient (if (plist-member body :transient) (plist-get body :transient) t))
         )
+    (when (keywordp (car body))
+      (pop body) (pop body)
+      )
     `(progn
        (transient-define-suffix ,fullname ()
-         :transient t
+         :transient ,transient
          ,@(when key (list :key key))
          :description (lambda () ,fmt)
          (interactive)
-         (with-current-buffer transient--original-buffer
+         (with-current-buffer (or transient--original-buffer (current-buffer))
            ,@body
            )
          )
