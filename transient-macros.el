@@ -106,10 +106,38 @@ with a string or format call, which executes the body
   (let ((fullname (intern (format "transient-macro-call-%s" (if (stringp name) name
                                                            (symbol-name name)))))
         (transient (if (plist-member body :transient) (plist-get body :transient) t))
+        (no-curr-buff (if (plist-member body :no-curr) (plist-get body :no-curr) nil))
         )
-    (when (keywordp (car body))
-      (pop body) (pop body)
-      )
+    (while (keywordp (car body))
+      (pop body) (pop body))
+    `(progn
+       (transient-define-suffix ,fullname ()
+         :transient ,transient
+         ,@(when key (list :key key))
+         :description (lambda () ,fmt)
+         (interactive)
+         ,@(if no-curr-buff
+               body
+             `((with-current-buffer (or transient--original-buffer (current-buffer))
+                ,@body
+                )))
+         )
+       (quote ,fullname)
+       )
+    )
+  )
+
+;;;###autoload
+(cl-defmacro transient-make-int-call! (name key fmt &body body)
+  " create a transient suffix of `name`
+with a string or format call, interactively calls the fn symbol in body
+ "
+  (let ((fullname (intern (format "transient-macro-call-%s" (if (stringp name) name
+                                                           (symbol-name name)))))
+        (transient (if (plist-member body :transient) (plist-get body :transient) t))
+        )
+    (while (keywordp (car body))
+      (pop body) (pop body))
     `(progn
        (transient-define-suffix ,fullname ()
          :transient ,transient
@@ -117,7 +145,7 @@ with a string or format call, which executes the body
          :description (lambda () ,fmt)
          (interactive)
          (with-current-buffer (or transient--original-buffer (current-buffer))
-           ,@body
+           (call-interactively ,@body)
            )
          )
        (quote ,fullname)
@@ -128,13 +156,23 @@ with a string or format call, which executes the body
 ;;;###autoload
 (cl-defmacro transient-make-subgroup! (name bind docstring &body body &key (desc nil) &allow-other-keys)
   " Make prefix subgroup bound to const `name`, as the triple (keybind descr prefix-call),
-which can then be included in other transient-prefixes as just `name`'
+which can then be included in other transient-prefixes as just `name`
+with text properties to mark it so
+'
  "
   (let ((prefix (gensym))
         (docfn (gensym))
-        (doc (let ((str (or desc (symbol-name name))))
+        (doc (pcase (or desc (symbol-name name))
+               ((and str (pred stringp))
                 (put-text-property 0 (length str) 'face 'transient-heading str)
-                str)))
+                str)
+               ((and fn (pred functionp))
+                `(let ((result (funcall ,fn)))
+                   (put-text-property 0 (length result) 'face 'transient-heading result)
+                   result
+                   ))
+               ))
+        )
     (when (keywordp (car body))
       (pop body) (pop body)
       )
