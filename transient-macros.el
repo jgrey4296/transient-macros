@@ -19,6 +19,7 @@
   "Prefix Subclassed to hold a description"
   )
 
+
 (cl-defmethod transient-format-description :before ((obj transient-macro--group))
   "Format the description by calling the next method.  If the result
 is nil, then use \"(BUG: no description)\" as the description.
@@ -27,6 +28,25 @@ If the OBJ's `key' is currently unreachable, then apply the face
   (or (funcall (oref obj description))
       (propertize "(JG BUG: no description)" 'face 'error))
 )
+
+;;;###autoload
+(defun transient-title-mode-formatter (name mode key)
+  (format "%s%s : %s"
+          (make-string (max 0 (- 3 (length key))) 32)
+          (fmt-as-bool! mode)
+          name
+          )
+  )
+
+;;;###autoload
+(defun transient-title-var-formatter (name val key)
+  (format "%s%s : %s"
+          (make-string (max 0 (- 3 (length key))) 32)
+          (fmt-as-bool! val)
+          name
+          )
+  )
+
 
 ;;;###autoload
 (defun fmt-as-bool! (arg)
@@ -62,7 +82,7 @@ If the OBJ's `key' is currently unreachable, then apply the face
                  (when heading
                    (put-text-property 0 (length str) 'face 'transient-heading str))
                  str))
-        (desc-fn `(lambda () (format "%-2s : %s" (fmt-as-bool! ,(or mode-var mode)) ,name)))
+        (desc-fn `(lambda () (transient-title-mode-formatter ,name ,(or mode-var mode) ,key)))
         )
     `(progn
        (defvar ,(or mode-var mode) nil)
@@ -82,7 +102,7 @@ If the OBJ's `key' is currently unreachable, then apply the face
 (defmacro transient-make-var-toggle! (name var &optional desc key)
   " Macro to define a transient suffix for toggling a bool variable "
   (let* ((fullname (intern (format "transient-macro-toggle-%s" (symbol-name name))))
-         (desc-fn `(lambda () (format "%-2s : %s" (fmt-as-bool! ,var) ,(or desc (symbol-name name)))))
+         (desc-fn `(lambda () (transient-title-var-formatter ,(or desc (symbol-name name)) ,var ,key)))
          )
     `(progn
        (defvar ,var nil)
@@ -96,7 +116,7 @@ If the OBJ's `key' is currently unreachable, then apply the face
        (quote ,fullname)
        )
     )
-  )
+)
 
 ;;;###autoload
 (cl-defmacro transient-make-call! (name key fmt &body body)
